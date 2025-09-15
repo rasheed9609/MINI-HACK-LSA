@@ -1,0 +1,305 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Random Act of Kindness — Fixed</title>
+  <meta name="description" content="Generate and track Random Acts of Kindness challenges." />
+
+  <!-- Load libraries with defer so they are available before DOMContentLoaded handlers run -->
+  <script src="https://unpkg.com/@lottiefiles/lottie-player@latest/dist/lottie-player.js" defer></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js" defer></script>
+
+  <style>
+    /* Basic reset and layout */
+    :root{ --glass: rgba(255,255,255,0.08); --accent1:#00dbde; --accent2:#fc00ff }
+    *{box-sizing:border-box}
+    html,body{height:100%;margin:0}
+    body{font-family:Inter,system-ui,Segoe UI,Roboto,Helvetica,Arial;background:#0f2b3d;color:#fff;position:relative}
+
+    /* Background image + overlay */
+    body::before{
+      content:"";position:fixed;inset:0;background:url('https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1600&q=80') center/cover no-repeat;filter:blur(2px) saturate(80%);z-index:0;opacity:0.9
+    }
+    body::after{content:"";position:fixed;inset:0;background:linear-gradient(180deg, rgba(6,21,34,0.6), rgba(6,21,34,0.75));z-index:1}
+
+    /* Main content wrapper sits above background */
+    .site{position:relative;z-index:2;max-width:1100px;margin:32px auto;padding:20px}
+
+    .grid{display:grid;grid-template-columns:1fr 360px;gap:20px}
+    @media (max-width:980px){ .grid{grid-template-columns:1fr} }
+
+    .card{background:linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.02));backdrop-filter:blur(8px);border-radius:14px;padding:18px;border:1px solid rgba(255,255,255,0.04);box-shadow:0 12px 35px rgba(2,6,23,0.6)}
+
+    header{display:flex;gap:12px;align-items:center}
+    .logo{width:68px;height:68px;border-radius:14px;display:flex;align-items:center;justify-content:center;background:linear-gradient(90deg,var(--accent1),var(--accent2));color:#06142a;font-weight:800;box-shadow:0 12px 35px rgba(124,78,255,0.12);font-size:28px}
+    h1{margin:0;font-size:20px}
+    p.lead{margin:4px 0 0;color:rgba(255,255,255,0.75);font-size:13px}
+
+    .hero-anim{margin-top:12px}
+    .controls{display:flex;flex-direction:column;gap:10px}
+
+    .btn{padding:12px 14px;border-radius:12px;border:0;font-weight:700;cursor:pointer}
+    .btn.primary{background:linear-gradient(90deg,var(--accent1),var(--accent2));color:#06142a}
+    .btn.ghost{background:transparent;border:1px solid rgba(255,255,255,0.04);color:inherit}
+
+    .result{min-height:120px;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;text-align:center}
+
+    .sidebar .section-title{font-size:13px;color:rgba(255,255,255,0.8);margin-bottom:8px}
+    .history{display:grid;gap:8px;max-height:360px;overflow:auto;padding-right:6px}
+    .hist-item{background:rgba(0,0,0,0.12);padding:10px;border-radius:10px;display:flex;justify-content:space-between;align-items:center}
+
+    /* Confetti canvas (full-screen overlay) */
+    #confetti-canvas{position:fixed;inset:0;pointer-events:none;z-index:9999}
+
+    footer{margin-top:18px;text-align:center;color:rgba(255,255,255,0.6);font-size:13px}
+  </style>
+</head>
+<body>
+  <canvas id="confetti-canvas" aria-hidden="true"></canvas>
+  <div class="site">
+    <div class="card" role="banner">
+      <header>
+        <div class="logo" aria-hidden="true">💫</div>
+        <div>
+          <h1>Random Act of Kindness</h1>
+          <p class="lead">Generate small acts, save history, and celebrate kindness.</p>
+        </div>
+      </header>
+
+      <div class="grid" style="margin-top:16px">
+        <div>
+          <div class="card" style="padding:14px">
+            <div class="hero-anim" aria-hidden="true">
+              <lottie-player src="https://assets7.lottiefiles.com/packages/lf20_touohxv0.json" background="transparent"  speed="1"  style="width:100%;height:150px"  loop  autoplay></lottie-player>
+            </div>
+
+            <div class="controls" style="margin-top:12px">
+              <div style="display:flex;gap:10px;flex-wrap:wrap">
+                <select id="focus" aria-label="Focus" style="padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,0.04);background:transparent;color:inherit">
+                  <option value="any">Focus: Any</option>
+                  <option value="stranger">Stranger</option>
+                  <option value="friend">Friend</option>
+                  <option value="community">Community</option>
+                  <option value="environment">Environment</option>
+                  <option value="self">Self-care</option>
+                </select>
+
+                <select id="effort" aria-label="Effort" style="padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,0.04);background:transparent;color:inherit">
+                  <option value="any">Effort: Any</option>
+                  <option value="low">Low (5-15m)</option>
+                  <option value="medium">Medium (15-45m)</option>
+                  <option value="high">High (45m+)</option>
+                </select>
+
+                <input id="count" type="range" min="1" max="5" value="1" aria-label="Count" style="flex:1" />
+              </div>
+
+              <div style="display:flex;gap:10px;margin-top:10px">
+                <button id="generate" class="btn primary">🎯 Generate</button>
+                <button id="surprise" class="btn ghost">🎲 Surprise</button>
+                <button id="saveBtn" class="btn ghost">⭐ Save</button>
+              </div>
+            </div>
+
+            <div class="card" style="margin-top:12px">
+              <div id="result" class="result">Your kindness challenge will appear here.</div>
+              <div style="display:flex;gap:8px;justify-content:center;margin-top:10px">
+                <button id="doneBtn" class="btn">✅ Done</button>
+                <button id="shareBtn" class="btn ghost">📤 Share</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <aside class="sidebar">
+          <div class="card">
+            <div class="section-title">History</div>
+            <div id="historyList" class="history" aria-live="polite"></div>
+
+            <div style="margin-top:12px">
+              <div class="section-title">Badges & Progress</div>
+              <div id="badges" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px"></div>
+              <div style="margin-top:8px;color:rgba(255,255,255,0.75)" id="progressLabel">Completed: 0</div>
+            </div>
+
+            <div style="margin-top:12px;display:flex;gap:8px">
+              <button id="exportBtn" class="btn ghost">⬇️ Export</button>
+              <button id="importBtn" class="btn ghost">⬆️ Import</button>
+              <input id="importFile" type="file" accept="application/json" style="display:none" />
+              <button id="clearBtn" class="btn ghost">🧹 Clear</button>
+            </div>
+          </div>
+        </aside>
+      </div>
+
+      <footer style="margin-top:12px;color:rgba(255,255,255,0.65);font-size:13px">Built with ❤️ — open the console for debug info</footer>
+    </div>
+  </div>
+
+  <script>
+  // Run after DOM is ready (libraries loaded with defer)
+  window.addEventListener('DOMContentLoaded', function(){
+    try{
+      console.log('Kindness app initializing...');
+
+      // Elements
+      const resultEl = document.getElementById('result');
+      const generateBtn = document.getElementById('generate');
+      const surpriseBtn = document.getElementById('surprise');
+      const saveBtn = document.getElementById('saveBtn');
+      const doneBtn = document.getElementById('doneBtn');
+      const shareBtn = document.getElementById('shareBtn');
+      const historyList = document.getElementById('historyList');
+      const badgesEl = document.getElementById('badges');
+      const progressLabel = document.getElementById('progressLabel');
+      const confettiCanvas = document.getElementById('confetti-canvas');
+      const focusEl = document.getElementById('focus');
+      const effortEl = document.getElementById('effort');
+      const countEl = document.getElementById('count');
+
+      // Data (50 starter prompts)
+      const CHALLENGES = [
+        {text:"Give a genuine compliment to someone you pass.",focus:'any',effort:'low'},
+        {text:"Pay for a stranger's coffee or snack.",focus:'stranger',effort:'low'},
+        {text:"Write a short thank-you note to someone who helped you.",focus:'friend',effort:'medium'},
+        {text:"Spend 15 minutes picking up litter in your area.",focus:'environment',effort:'medium'},
+        {text:"Donate gently used clothes to a local shelter.",focus:'community',effort:'high'},
+        {text:"Share a positive review for a small local business.",focus:'community',effort:'low'},
+        {text:"Call a family member and ask how they are doing.",focus:'friend',effort:'medium'},
+        {text:"Leave an encouraging sticky note in a public place.",focus:'stranger',effort:'low'},
+        {text:"Offer to help a coworker with a task.",focus:'friend',effort:'medium'},
+        {text:"Bring treats to your team or neighbors.",focus:'community',effort:'low'},
+        {text:"Plant a native flower or tree in your garden.",focus:'environment',effort:'high'},
+        {text:"Volunteer 2 hours at a local organization this week.",focus:'community',effort:'high'},
+        {text:"Give up your seat on public transport.",focus:'stranger',effort:'low'},
+        {text:"Pay an unexpected compliment to a service worker.",focus:'stranger',effort:'low'},
+        {text:"Send a care package or snack to someone who needs it.",focus:'friend',effort:'high'},
+        {text:"Leave a surprise note for someone at home.",focus:'friend',effort:'low'},
+        {text:"Help someone carry heavy items.",focus:'stranger',effort:'medium'},
+        {text:"Offer to babysit or pet sit to give someone a break.",focus:'friend',effort:'high'},
+        {text:"Donate blood if you are eligible.",focus:'community',effort:'high'},
+        {text:"Bake cookies and share them with neighbors.",focus:'community',effort:'medium'},
+        {text:"Pick up one extra item next time you grocery shop for donation.",focus:'community',effort:'low'},
+        {text:"Leave a kind note on your colleague's desk.",focus:'friend',effort:'low'},
+        {text:"Help a neighbor with yard work for 30 minutes.",focus:'community',effort:'medium'},
+        {text:"Teach someone a small skill you know.",focus:'friend',effort:'medium'},
+        {text:"Run an errand for an elderly neighbor.",focus:'stranger',effort:'medium'},
+        {text:"Organize a mini clean-up at a local spot.",focus:'environment',effort:'high'},
+        {text:"Offer to take a photo of a tourist or group.",focus:'stranger',effort:'low'},
+        {text:"Surprise someone with a small, thoughtful gift.",focus:'friend',effort:'low'},
+        {text:"Write a short poem or note for someone you appreciate.",focus:'friend',effort:'low'},
+        {text:"Leave flowers at a community center.",focus:'community',effort:'medium'},
+        {text:"Give a book you love to someone else.",focus:'community',effort:'low'},
+        {text:"Invite someone new to join your lunch or coffee.",focus:'friend',effort:'low'},
+        {text:"Share your umbrella with someone on a rainy day.",focus:'stranger',effort:'low'},
+        {text:"Send a message of appreciation to a teacher or mentor.",focus:'friend',effort:'low'},
+        {text:"Make a playlist for a friend who needs cheering up.",focus:'friend',effort:'low'},
+        {text:"Help someone learn a shortcut with their phone or app.",focus:'friend',effort:'low'},
+        {text:"Leave a positive comment on someone's post.",focus:'any',effort:'low'},
+        {text:"Collect recyclables from your area and recycle properly.",focus:'environment',effort:'medium'},
+        {text:"Bring extra reusable bags and offer them to someone who forgot.",focus:'environment',effort:'low'},
+        {text:"Pay for a public parking meter for the next person (where possible).",focus:'stranger',effort:'medium'},
+        {text:"Volunteer to read to children at a library.",focus:'community',effort:'medium'},
+        {text:"Share a skill through a free mini-class or tutorial online.",focus:'community',effort:'high'},
+        {text:"Surprise a colleague with coffee during a tough day.",focus:'friend',effort:'low'},
+        {text:"Help someone find directions or local info.",focus:'stranger',effort:'low'},
+        {text:"Give a positive review to a freelance worker you hired.",focus:'community',effort:'low'},
+        {text:"Organize a donation dropbox for a cause you care about.",focus:'community',effort:'high'},
+        {text:"Share a warm greeting with someone who looks lonely.",focus:'stranger',effort:'low'}
+      ];
+
+      // LocalStorage keys
+      const LS_HISTORY = 'kindness:history:v1';
+      const LS_STATS = 'kindness:stats:v1';
+
+      // Helpers
+      function safeSample(arr,n=1){
+        const out=[]; const used=new Set();
+        const max=Math.min(n,arr.length);
+        while(out.length<max){
+          const i=Math.floor(Math.random()*arr.length);
+          if(used.has(i)) continue; used.add(i); out.push(arr[i]);
+        }
+        return out;
+      }
+
+      function renderResult(item){
+        if(!item) { resultEl.textContent='(No challenge)'; return; }
+        if(Array.isArray(item)) resultEl.innerHTML = item.map(x=>'• '+escapeHtml(x.text)).join('<br>');
+        else resultEl.textContent = item.text || item;
+      }
+
+      function escapeHtml(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+      // History
+      function loadHistory(){ try{ return JSON.parse(localStorage.getItem(LS_HISTORY)||'[]'); }catch(e){return []} }
+      function saveHistoryEntry(item){ const arr=loadHistory(); arr.unshift({text:item.text||item,ts:Date.now()}); localStorage.setItem(LS_HISTORY,JSON.stringify(arr.slice(0,200))); renderHistory(); }
+
+      function renderHistory(){ const arr=loadHistory(); historyList.innerHTML=''; if(arr.length===0){ historyList.innerHTML='<div style="color:rgba(255,255,255,0.7)">No history yet</div>'; return;} arr.slice(0,50).forEach((h,idx)=>{ const el=document.createElement('div'); el.className='hist-item'; el.innerHTML=`<div style="flex:1"><div style="font-weight:700">${escapeHtml(h.text)}</div><div style="font-size:12px;color:rgba(255,255,255,0.6)">${new Date(h.ts).toLocaleString()}</div></div><div><button data-idx="${idx}" class="btn ghost">↻</button></div>`; historyList.appendChild(el); });
+        // attach repeat
+        historyList.querySelectorAll('[data-idx]').forEach(b=>b.addEventListener('click', (ev)=>{ const i=Number(ev.currentTarget.dataset.idx); const arr=loadHistory(); if(arr[i]){ current = {text:arr[i].text}; renderResult(current); } }));
+      }
+
+      // Badges
+      function updateBadges(){ const stats = JSON.parse(localStorage.getItem(LS_STATS)||'{}'); const completed=stats.completed||0; badgesEl.innerHTML=''; const rules=[{label:'Starter (5)',t:5},{label:'Friendly (15)',t:15},{label:'Hero (30)',t:30},{label:'Legend (50)',t:50}]; rules.forEach(r=>{ const el=document.createElement('div'); el.textContent=r.label; el.className='badge'; el.style.padding='8px 10px'; el.style.borderRadius='999px'; el.style.background = completed>=r.t ? 'linear-gradient(90deg,var(--accent1),var(--accent2))' : 'rgba(255,255,255,0.03)'; badgesEl.appendChild(el); }); progressLabel.textContent = 'Completed: '+(stats.completed||0); }
+
+      // Confetti helper (safe)
+      function fireConfetti(){ try{
+        if(window.confetti && typeof window.confetti === 'function'){
+          window.confetti({particleCount:80,spread:140,origin:{y:0.6}});
+        } else if(window.confetti && typeof window.confetti.create === 'function'){
+          const my = window.confetti.create(confettiCanvas, {resize:true, useWorker:true}); my({particleCount:80, spread:140, origin:{y:0.6}});
+        } else { console.warn('confetti not available'); }
+      }catch(err){ console.warn('confetti error', err);} }
+
+      // State
+      let current = null;
+
+      // Filtering pool
+      function getPool(){ const f = focusEl.value; const e = effortEl.value; return CHALLENGES.filter(c => (f==='any' || c.focus===f || c.focus==='any') && (e==='any' || c.effort===e || c.effort==='any')); }
+
+      // Generate
+      function generate(){ const pool = getPool(); const n = Number(countEl.value)||1; if(pool.length===0){ resultEl.textContent='No matching challenges'; return; } const chosen = safeSample(pool, n); current = n===1 ? chosen[0] : chosen; renderResult(current); // save history
+        if(Array.isArray(chosen)) chosen.forEach(c=>saveHistoryEntry(c)); else saveHistoryEntry(chosen);
+        // animation
+        try{ if(window.gsap) gsap.fromTo(resultEl, {scale:0.96, opacity:0}, {scale:1, opacity:1, duration:0.5, ease:'power3.out'}); }catch(e){}
+      }
+
+      // Surprise
+      function surprise(){ const f=['any','stranger','friend','community','environment','self']; const ef=['any','low','medium','high']; focusEl.value = f[Math.floor(Math.random()*f.length)]; effortEl.value = ef[Math.floor(Math.random()*ef.length)]; countEl.value = String(1 + Math.floor(Math.random()*3)); generate(); fireConfetti(); }
+
+      // Save favorite (simple impl: saves current to history again as favorite marker)
+      function saveCurrent(){ if(!current) return alert('Generate a challenge first'); const favs = JSON.parse(localStorage.getItem('kindness:favs')||'[]'); const txt = (current.text||current).toString(); if(favs.find(x=>x.text===txt)) return alert('Already saved'); favs.unshift({text:txt,ts:Date.now()}); localStorage.setItem('kindness:favs', JSON.stringify(favs)); alert('Saved to favorites'); }
+
+      // Done
+      function done(){ if(!current) return alert('Generate a challenge first'); fireConfetti(); const stats = JSON.parse(localStorage.getItem(LS_STATS)||'{}'); stats.completed = (stats.completed||0) + 1; localStorage.setItem(LS_STATS, JSON.stringify(stats)); updateBadges(); }
+
+      // Share
+      async function share(){ if(!current) return alert('Generate a challenge first'); const text = (current.text||current).toString(); if(navigator.share){ try{ await navigator.share({title:'Kindness Challenge', text}); }catch(e){} } else if(navigator.clipboard){ navigator.clipboard.writeText(text).then(()=>{ alert('Copied to clipboard'); }); } else { prompt('Copy this challenge', text); } }
+
+      // Export/Import
+      document.getElementById('exportBtn').addEventListener('click', ()=>{
+        const payload = {history: loadHistory(), stats: JSON.parse(localStorage.getItem(LS_STATS)||'{}')}; const blob = new Blob([JSON.stringify(payload, null, 2)], {type:'application/json'}); const url = URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='kindness-data.json'; a.click(); URL.revokeObjectURL(url);
+      });
+      document.getElementById('importBtn').addEventListener('click', ()=>document.getElementById('importFile').click());
+      document.getElementById('importFile').addEventListener('change', (e)=>{ const f=e.target.files[0]; if(!f) return; const r=new FileReader(); r.onload = ()=>{ try{ const p=JSON.parse(r.result); if(p.history) localStorage.setItem(LS_HISTORY, JSON.stringify(p.history)); if(p.stats) localStorage.setItem(LS_STATS, JSON.stringify(p.stats)); renderHistory(); updateBadges(); alert('Imported'); }catch(err){ alert('Invalid JSON'); } }; r.readAsText(f); });
+      document.getElementById('clearBtn').addEventListener('click', ()=>{ if(confirm('Clear history and stats?')){ localStorage.removeItem(LS_HISTORY); localStorage.removeItem(LS_STATS); renderHistory(); updateBadges(); } });
+
+      // Bind controls
+      generateBtn.addEventListener('click', generate);
+      surpriseBtn.addEventListener('click', surprise);
+      saveBtn.addEventListener('click', saveCurrent);
+      doneBtn.addEventListener('click', done);
+      shareBtn.addEventListener('click', share);
+
+      // Init
+      renderHistory(); updateBadges();
+
+      console.log('Kindness app ready');
+    }catch(err){ console.error('Initialization error', err); alert('An error occurred initializing the app — open the browser console (F12) and paste the error here so I can fix it.'); }
+  });
+  </script>
+</body>
+</html>
